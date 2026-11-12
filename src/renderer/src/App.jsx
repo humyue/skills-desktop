@@ -41,10 +41,7 @@ export default function App() {
   const refresh = useCallback(async () => {
     setError('')
     try {
-      const rows = await window.api.listSkills({
-        scope,
-        projectPath: scope === 'project' ? projectPath : undefined
-      })
+      const rows = await window.api.listSkills({ scope: 'global' })
       setSkills(rows)
       setSelectedName((prev) => (rows.some((row) => row.name === prev) ? prev : rows[0]?.name || ''))
     } catch (err) {
@@ -52,7 +49,7 @@ export default function App() {
       setSelectedName('')
       setError(err.message)
     }
-  }, [scope, projectPath])
+  }, [])
 
   useEffect(() => {
     refresh()
@@ -117,16 +114,16 @@ export default function App() {
     async (skill) => {
       const ok = window.confirm(`确认卸载 ${skill.name}？\n将影响 Agent：${(skill.agents || []).join('、') || '全部'}`)
       if (!ok) return
-      await runJob(() => window.api.removeSkills({ names: [skill.name], scope, projectPath }), {
+      await runJob(() => window.api.removeSkills({ names: [skill.name], scope: 'global' }), {
         successMessage: `已卸载 ${skill.name}`
       })
     },
-    [runJob, scope, projectPath]
+    [runJob]
   )
 
   const handleUpdate = useCallback(async () => {
-    await runJob(() => window.api.updateSkills({ scope, projectPath }), { successMessage: '更新完成' })
-  }, [runJob, scope, projectPath])
+    await runJob(() => window.api.updateSkills({ scope: 'global' }), { successMessage: '更新完成' })
+  }, [runJob])
 
   const handleOpen = useCallback((path) => {
     if (path) window.api.openPath(path)
@@ -145,16 +142,6 @@ export default function App() {
           <div className="brand-sub">skills CLI 可视化客户端</div>
         </div>
         <div className="titlebar-right">
-          {page === 'installed' && (
-            <div className="segmented">
-              <button className={scope === 'global' ? 'active' : ''} onClick={() => changeScope('global')}>
-                全局
-              </button>
-              <button className={scope === 'project' ? 'active' : ''} onClick={() => changeScope('project')}>
-                项目
-              </button>
-            </div>
-          )}
           <button
             className="btn ghost"
             onClick={() => updateTheme(settings.theme === 'dark' ? 'light' : 'dark')}
@@ -184,13 +171,12 @@ export default function App() {
               skills={skills}
               selectedName={selectedName}
               onSelect={setSelectedName}
-              scope={scope}
-              projectPath={projectPath}
               error={error}
               busy={busy}
               onRemove={handleRemove}
               onUpdate={handleUpdate}
               onOpen={handleOpen}
+              onRefresh={refresh}
             />
           )}
           {page === 'install' && (

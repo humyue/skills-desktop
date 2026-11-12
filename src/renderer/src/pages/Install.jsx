@@ -7,6 +7,11 @@ function formatInstalls(count) {
   return String(count)
 }
 
+// IPC 抛出的错误会被 Electron 包一层前缀，展示时去掉
+function cleanErrorMessage(message) {
+  return String(message || '').replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/, '')
+}
+
 export default function Install({ scope, onScopeChange, projectPath, onPickProject, runJob, busy, onDone }) {
   const [tab, setTab] = useState('repo')
   const [source, setSource] = useState('')
@@ -55,7 +60,7 @@ export default function Install({ scope, onScopeChange, projectPath, onPickProje
         setPreviewError('未在来源中发现技能，请检查来源地址与网络连接')
       }
     } catch (error) {
-      setPreviewError(error.message)
+      setPreviewError(cleanErrorMessage(error.message))
     } finally {
       setPreviewLoading(false)
     }

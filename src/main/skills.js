@@ -84,9 +84,19 @@ export async function previewRepo({ source, cliPath }) {
 }
 
 // CLI 的失败原因藏在带错误码或 fatal 的行里，挑出来给界面展示，便于排查
+const ERROR_HINTS = {
+  SKILLS_NO_VALID_SKILLS:
+    '该目录下没有可安装的技能：需要包含带 name 与 description 的 SKILL.md；若目录中有 skills-lock.json，清单里已登记的技能不会重复列出，请改选技能所在目录（如 .agents/skills）',
+  SKILLS_LOCAL_PATH_NOT_FOUND: '本地路径不存在，请确认目录没有被移动或删除',
+  SKILLS_GIT_CLONE_FAILED: '仓库克隆失败，请检查地址是否正确，以及当前网络能否访问 GitHub'
+}
+
 function cliErrorSummary(output, code) {
-  const lines = stripAnsi(output)
-    .replace(/\r/g, '')
+  const text = stripAnsi(output).replace(/\r/g, '')
+  const codeMatch = /\[(SKILLS_[A-Z_]+)\]/.exec(text)
+  if (codeMatch && ERROR_HINTS[codeMatch[1]]) return ERROR_HINTS[codeMatch[1]]
+
+  const lines = text
     .split('\n')
     .map((line) => line.replace(/^[│└┌├◇◆■]\s*/, '').trim())
     .filter(Boolean)

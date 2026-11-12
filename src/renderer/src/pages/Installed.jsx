@@ -5,13 +5,12 @@ export default function Installed({
   skills,
   selectedName,
   onSelect,
-  scope,
-  projectPath,
   error,
   busy,
   onRemove,
   onUpdate,
-  onOpen
+  onOpen,
+  onRefresh
 }) {
   const [query, setQuery] = useState('')
 
@@ -36,6 +35,9 @@ export default function Installed({
           <span className="pane-meta">
             {filtered.length} / {skills.length} 个
           </span>
+          <button className="btn ghost" onClick={onRefresh} disabled={busy}>
+            刷新
+          </button>
         </div>
 
         {error && <div className="error-text">{error}</div>}
@@ -71,7 +73,7 @@ export default function Installed({
           <button className="btn" onClick={onUpdate} disabled={busy}>
             更新已装技能
           </button>
-          <span className="pane-meta">{scope === 'project' ? projectPath || '未选择项目' : '全局作用域'}</span>
+          <span className="pane-meta">全局作用域</span>
         </div>
       </div>
 
