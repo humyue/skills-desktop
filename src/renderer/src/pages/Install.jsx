@@ -52,7 +52,7 @@ export default function Install({ scope, onScopeChange, projectPath, onPickProje
       const initial = preselect ? preselect.filter((name) => names.includes(name)) : names
       setChecked(initial.length > 0 ? initial : names)
       if (result.skills.length === 0) {
-        setPreviewError('未在来源中发现技能，请检查仓库地址、网络或代理设置')
+        setPreviewError('未在来源中发现技能，请检查来源地址与网络连接')
       }
     } catch (error) {
       setPreviewError(error.message)

@@ -3,20 +3,46 @@
   "version": "0.1.0",
   "private": true,
   "description": "Visual desktop client for the skills CLI",
+  "author": "humingyue",
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
-    "start": "electron-vite preview"
+    "start": "electron-vite preview",
+    "dist": "electron-vite build && electron-builder --win --publish never"
+  },
+  "build": {
+    "appId": "com.humyue.skills-desktop",
+    "productName": "Skills Manager",
+    "directories": {
+      "output": "release"
+    },
+    "asarUnpack": [
+      "node_modules/**"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "${productName}-${version}-setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "deleteAppDataOnUninstall": false
+    }
   },
   "dependencies": {
     "dompurify": "^3.2.4",
     "marked": "^15.0.7",
+    "skills": "^1.8.1",
     "yaml": "^2.8.3"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
-    "electron": "^33.0.0",
+    "electron": "^38.8.6",
+    "electron-builder": "^26.18.0",
     "electron-vite": "^2.3.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

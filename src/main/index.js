@@ -1,26 +1,18 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, screen, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, screen, shell } from 'electron'
 import { join } from 'node:path'
 import { getSettings, saveSettings } from './settings.js'
 import { listAgents } from './agents.js'
-import { getInstalledCliVersion, installSkillsPackage, resolveCliPath, testGitAccess } from './cli.js'
+import { getCliInfo, resolveCliPath, testGitAccess } from './cli.js'
 import { checkCliUpdate } from './versions.js'
-import {
-  initSkill,
-  installSkills,
-  listSkills,
-  previewRepo,
-  readSkill,
-  removeSkills,
-  updateSkills
-} from './skills.js'
+import { installSkills, listSkills, previewRepo, readSkill, removeSkills, updateSkills } from './skills.js'
 import { checkHttpReachable, searchSkills } from './search.js'
 
 let mainWindow = null
 const allowedPaths = new Set()
 
 function requireCliPath() {
-  const resolved = resolveCliPath(getSettings().cliPath)
-  if (!resolved) throw new Error('未找到 skills CLI，请在设置页指定 bin/cli.mjs 路径')
+  const resolved = resolveCliPath()
+  if (!resolved) throw new Error('内置的 skills CLI 缺失，请重新安装应用')
   return resolved
 }
 
@@ -76,12 +68,10 @@ function registerIpc() {
   ipcMain.handle('agents:list', () => listAgents())
 
   ipcMain.handle('skills:list', async (_event, payload = {}) => {
-    const settings = getSettings()
     const rows = await listSkills({
       scope: payload.scope || 'global',
       projectPath: payload.projectPath,
-      cliPath: requireCliPath(),
-      proxy: settings.proxy
+      cliPath: requireCliPath()
     })
     allowedPaths.clear()
     for (const row of rows) if (row && row.path) allowedPaths.add(row.path)
@@ -99,70 +89,46 @@ function registerIpc() {
   })
 
   ipcMain.handle('skills:previewRepo', async (_event, payload = {}) => {
-    const settings = getSettings()
     return previewRepo({
       source: payload.source,
-      cliPath: requireCliPath(),
-      proxy: settings.proxy
+      cliPath: requireCliPath()
     })
   })
 
   ipcMain.handle('skills:install', async (event, payload = {}) => {
-    const settings = getSettings()
     return installSkills({
       ...payload,
       cliPath: requireCliPath(),
-      proxy: settings.proxy,
       onLog: logEmitter(event)
     })
   })
 
   ipcMain.handle('skills:remove', async (event, payload = {}) => {
-    const settings = getSettings()
     return removeSkills({
       ...payload,
       cliPath: requireCliPath(),
-      proxy: settings.proxy,
       onLog: logEmitter(event)
     })
   })
 
   ipcMain.handle('skills:update', async (event, payload = {}) => {
-    const settings = getSettings()
     return updateSkills({
       ...payload,
       cliPath: requireCliPath(),
-      proxy: settings.proxy,
       onLog: logEmitter(event)
     })
   })
 
-  ipcMain.handle('skills:init', async (_event, payload = {}) => {
-    return initSkill({ ...payload, cliPath: requireCliPath() })
-  })
-
   ipcMain.handle('cli:checkUpdate', () => checkCliUpdate(requireCliPath()))
 
-  ipcMain.handle('cli:version', () => getInstalledCliVersion(requireCliPath()))
-
-  ipcMain.handle('cli:update', async (event) => {
-    const result = await installSkillsPackage(logEmitter(event))
-    const current = getInstalledCliVersion(resolveCliPath(getSettings().cliPath))
-    return { ...result, current }
-  })
-
-  ipcMain.handle('clipboard:write', (_event, text) => {
-    clipboard.writeText(String(text || ''))
-    return true
-  })
+  ipcMain.handle('cli:info', () => getCliInfo())
 
   ipcMain.handle('search:skills', (_event, payload = {}) => searchSkills(payload))
 
   ipcMain.handle('net:test', async () => {
-    const settings = getSettings()
     const http = await checkHttpReachable()
-    const git = testGitAccess(settings.proxy)
-    const cli = resolveCliPath(settings.cliPath)
+    const git = await testGitAccess()
+    const cli = resolveCliPath()
     return { http, git, cli }
   })
 

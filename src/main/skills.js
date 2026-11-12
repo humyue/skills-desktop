@@ -4,12 +4,12 @@ import { homedir } from 'node:os'
 import { parse as parseYaml } from 'yaml'
 import { runCli, stripAnsi } from './cli.js'
 
-export async function listSkills({ scope = 'global', projectPath, cliPath, proxy }) {
+export async function listSkills({ scope = 'global', projectPath, cliPath }) {
   const args = ['ls', '--json']
   const cwd = scope === 'global' ? homedir() : projectPath
   if (scope === 'global') args.push('-g')
   if (scope === 'project' && !cwd) throw new Error('请先选择项目目录')
-  const { code, output } = await runCli(cliPath, args, { cwd, proxy })
+  const { code, output } = await runCli(cliPath, args, { cwd })
   if (code !== 0) throw new Error(output || 'skills ls 执行失败')
   const start = output.indexOf('[')
   if (start === -1) return []
@@ -20,7 +20,7 @@ export async function listSkills({ scope = 'global', projectPath, cliPath, proxy
   }
 }
 
-export function parseRepoList(raw) {
+function parseRepoList(raw) {
   const lines = stripAnsi(raw).replace(/\r/g, '').split('\n')
   const start = lines.findIndex((line) => line.includes('Available Skills'))
   if (start === -1) return { skills: [] }
@@ -56,7 +56,7 @@ export function parseRepoList(raw) {
   return { skills }
 }
 
-export function buildInstallArgs({ source, skills, agents, global, copy = true }) {
+function buildInstallArgs({ source, skills, agents, global, copy = true }) {
   const args = ['add', source]
   for (const name of skills) args.push('--skill', name)
   for (const agent of agents) args.push('--agent', agent)
@@ -66,17 +66,37 @@ export function buildInstallArgs({ source, skills, agents, global, copy = true }
   return args
 }
 
-export async function previewRepo({ source, cliPath, proxy }) {
-  const { code, output } = await runCli(cliPath, ['add', source, '-l'], {
-    cwd: homedir(),
-    proxy
-  })
+export async function previewRepo({ source, cliPath }) {
+  const { code, output } = await runCli(cliPath, ['add', source, '-l'], { cwd: homedir() })
   const parsed = parseRepoList(output)
+  if (parsed.skills.length === 0) {
+    if (code !== 0) throw new Error(cliErrorSummary(output, code))
+    const skipped = (stripAnsi(output).match(/\[SKILLS_SKILL_SKIPPED\]/g) || []).length
+    if (skipped > 0) {
+      throw new Error(`来源中的 ${skipped} 个 SKILL.md 缺少 name / description 前置字段，全部被跳过`)
+    }
+    const found = /Found (\d+) skills?/.exec(stripAnsi(output))
+    if (found && Number(found[1]) > 0) {
+      throw new Error(`CLI 报告发现 ${found[1]} 个技能，但界面未能解析出结果，请把下方日志反馈给开发者`)
+    }
+  }
   return { code, output, skills: parsed.skills }
 }
 
+// CLI 的失败原因藏在带错误码或 fatal 的行里，挑出来给界面展示，便于排查
+function cliErrorSummary(output, code) {
+  const lines = stripAnsi(output)
+    .replace(/\r/g, '')
+    .split('\n')
+    .map((line) => line.replace(/^[│└┌├◇◆■]\s*/, '').trim())
+    .filter(Boolean)
+  const hits = lines.filter((line) => /\[SKILLS_[A-Z_]+\]|fatal:|Could not resolve|EACCES|EPERM/.test(line))
+  const detail = (hits.length > 0 ? hits.slice(0, 3) : lines.slice(-3)).join(' ')
+  return detail || `预览失败（退出码 ${code}）`
+}
+
 export async function installSkills(options) {
-  const { source, skills, agents, scope, projectPath, cliPath, proxy, onLog } = options
+  const { source, skills, agents, scope, projectPath, cliPath, onLog } = options
   if (!source) throw new Error('请填写技能来源')
   if (!skills || skills.length === 0) throw new Error('请至少选择一个技能')
   if (!agents || agents.length === 0) throw new Error('请至少选择一个 Agent')
@@ -84,11 +104,11 @@ export async function installSkills(options) {
   const cwd = global ? homedir() : projectPath
   if (!global && !cwd) throw new Error('请先选择项目目录')
   const args = buildInstallArgs({ source, skills, agents, global })
-  return runCli(cliPath, args, { cwd, proxy, onLog, timeoutMs: 600000 })
+  return runCli(cliPath, args, { cwd, onLog, timeoutMs: 600000 })
 }
 
 export async function removeSkills(options) {
-  const { names, agents, scope, projectPath, cliPath, proxy, onLog } = options
+  const { names, agents, scope, projectPath, cliPath, onLog } = options
   if (!names || names.length === 0) throw new Error('请选择要卸载的技能')
   const args = ['remove', ...names]
   for (const agent of agents || []) args.push('--agent', agent)
@@ -97,33 +117,21 @@ export async function removeSkills(options) {
   args.push('-y')
   return runCli(cliPath, args, {
     cwd: global ? homedir() : projectPath,
-    proxy,
     onLog
   })
 }
 
 export async function updateSkills(options) {
-  const { names, scope, projectPath, cliPath, proxy, onLog } = options
+  const { names, scope, projectPath, cliPath, onLog } = options
   const args = ['update']
   for (const name of names || []) args.push(name)
   args.push(scope === 'global' ? '-g' : '-p')
   args.push('-y')
   return runCli(cliPath, args, {
     cwd: scope === 'global' ? homedir() : projectPath,
-    proxy,
     onLog,
     timeoutMs: 600000
   })
-}
-
-export async function initSkill({ name, dir, cliPath }) {
-  if (!name || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(name)) {
-    throw new Error('技能名只能包含小写字母、数字与连字符')
-  }
-  if (!dir || !existsSync(dir)) throw new Error('请选择有效的目录')
-  const { code, output } = await runCli(cliPath, ['init', name], { cwd: dir })
-  if (code !== 0) throw new Error(output || 'skills init 执行失败')
-  return { path: join(dir, name, 'SKILL.md'), output }
 }
 
 export function readSkill(skillPath) {

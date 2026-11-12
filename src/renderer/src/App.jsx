@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import Installed from './pages/Installed'
 import Install from './pages/Install'
-import Create from './pages/Create'
 import SettingsPage from './pages/SettingsPage'
 import LogBar from './components/LogBar'
 
 const NAV = [
   { id: 'installed', label: '技能库' },
   { id: 'install', label: '安装技能' },
-  { id: 'create', label: '新建技能' },
   { id: 'settings', label: '设置' }
 ]
 
@@ -16,7 +14,7 @@ export default function App() {
   const [page, setPage] = useState('installed')
   const [scope, setScope] = useState('global')
   const [projectPath, setProjectPath] = useState('')
-  const [settings, setSettings] = useState({ proxy: '', cliPath: '', theme: 'light', recentProjects: [] })
+  const [settings, setSettings] = useState({ theme: 'light', recentProjects: [] })
   const [skills, setSkills] = useState([])
   const [selectedName, setSelectedName] = useState('')
   const [logs, setLogs] = useState([])
@@ -206,15 +204,7 @@ export default function App() {
               onDone={() => setPage('installed')}
             />
           )}
-          {page === 'create' && <Create />}
-          {page === 'settings' && (
-            <SettingsPage
-              settings={settings}
-              onSave={saveSettings}
-              theme={settings.theme}
-              onRunJob={runJob}
-            />
-          )}
+          {page === 'settings' && <SettingsPage settings={settings} onSave={saveSettings} />}
         </section>
       </div>
 

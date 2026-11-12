@@ -1,3 +1,4 @@
+import { app, session } from 'electron'
 import { existsSync, readFileSync } from 'node:fs'
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { dirname, join } from 'node:path'
@@ -9,10 +10,26 @@ export function stripAnsi(value) {
   return String(value).replace(ANSI_PATTERN, '')
 }
 
-export function normalizeProxy(value) {
-  const raw = String(value || '').trim()
-  if (!raw) return ''
-  return /^https?:\/\//i.test(raw) ? raw : `http://${raw}`
+let proxyCache = { value: '', at: 0 }
+
+// git 等命令行工具不读 Windows 的「Internet 选项」，需要把系统代理显式注入为环境变量
+async function systemProxyUrl() {
+  const now = Date.now()
+  if (now - proxyCache.at < 30000) return proxyCache.value
+  let value = ''
+  try {
+    const resolved = String(await session.defaultSession.resolveProxy('https://github.com'))
+    const first = resolved.split(';')[0].trim()
+    const match = /^(PROXY|HTTPS|SOCKS5|SOCKS4)\s+(\S+)$/i.exec(first)
+    if (match) {
+      const scheme = /^SOCKS5$/i.test(match[1]) ? 'socks5' : /^SOCKS4$/i.test(match[1]) ? 'socks4' : 'http'
+      value = `${scheme}://${match[2]}`
+    }
+  } catch {
+    value = ''
+  }
+  proxyCache = { value, at: now }
+  return value
 }
 
 function readNpmRoot() {
@@ -33,34 +50,59 @@ export function getInstalledCliVersion(cliPath) {
   }
 }
 
-export function resolveCliPath(explicit) {
-  const candidates = []
-  if (explicit) candidates.push(explicit)
-  if (process.env.SKILLS_CLI_PATH) candidates.push(process.env.SKILLS_CLI_PATH)
-  candidates.push(join(process.cwd(), 'node_modules', 'skills', 'bin', 'cli.mjs'))
-  if (process.env.APPDATA) {
-    candidates.push(join(process.env.APPDATA, 'npm', 'node_modules', 'skills', 'bin', 'cli.mjs'))
+const CLI_REL = ['node_modules', 'skills', 'bin', 'cli.mjs']
+
+// 安装包内置的 skills CLI：打包后位于 app.asar.unpacked，开发时位于项目根目录
+function bundledCliCandidates() {
+  const list = []
+  if (app.isPackaged) {
+    list.push(join(process.resourcesPath, 'app.asar.unpacked', ...CLI_REL))
   }
-  const npmRoot = readNpmRoot()
-  if (npmRoot) candidates.push(join(npmRoot, 'skills', 'bin', 'cli.mjs'))
-  return candidates.find((item) => item && existsSync(item)) || ''
+  list.push(join(app.getAppPath(), ...CLI_REL))
+  return list
 }
 
+export function resolveCliPath() {
+  const bundled = bundledCliCandidates().find((item) => existsSync(item))
+  if (bundled) return bundled
+
+  // 回退到全局安装的 CLI（需要用户机器上装有 Node.js 与 npm）
+  const globalCandidates = []
+  if (process.env.APPDATA) {
+    globalCandidates.push(join(process.env.APPDATA, 'npm', 'node_modules', 'skills', 'bin', 'cli.mjs'))
+  }
+  const npmRoot = readNpmRoot()
+  if (npmRoot) globalCandidates.push(join(npmRoot, 'skills', 'bin', 'cli.mjs'))
+  return globalCandidates.find((item) => existsSync(item)) || ''
+}
+
+export function getCliInfo() {
+  const cliPath = resolveCliPath()
+  if (!cliPath) return { path: '', version: '', source: 'missing' }
+  const isBundled = bundledCliCandidates().includes(cliPath)
+  return {
+    path: cliPath,
+    version: getInstalledCliVersion(cliPath),
+    source: isBundled ? 'bundled' : 'global'
+  }
+}
+
+// 始终用 Electron 自带的 Node 运行 CLI：安装包场景下用户机器没有 Node，
+// 且内置 CLI 与 Electron 的 Node 版本是配套验证过的
 function resolveNode() {
-  const probe = spawnSync('node', ['-v'], { encoding: 'utf8' })
-  if (probe.status === 0) return { cmd: 'node', extraEnv: {} }
   return { cmd: process.execPath, extraEnv: { ELECTRON_RUN_AS_NODE: '1' } }
 }
 
-function buildEnv(proxy) {
+function buildEnv(proxyUrl) {
   const env = {
     ...process.env,
     NO_COLOR: '1',
     FORCE_COLOR: '0',
     GIT_TERMINAL_PROMPT: '0'
   }
-  const proxyUrl = normalizeProxy(proxy)
-  if (proxyUrl) {
+  // 已显式设置过代理环境变量时以它为准，否则注入系统代理
+  const hasProxyEnv = process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY
+  if (proxyUrl && !hasProxyEnv) {
     env.HTTP_PROXY = proxyUrl
     env.HTTPS_PROXY = proxyUrl
     env.http_proxy = proxyUrl
@@ -103,11 +145,12 @@ function runProcess(command, args, options = {}) {
       }
     }, timeoutMs)
 
-    let buffer = ''
+    // stdout 与 stderr 必须各自缓冲：共用一个缓冲区时，半行内容会被另一条流粘住，解析出错
+    const buffers = { stdout: '', stderr: '' }
     const consume = (chunk, stream) => {
-      buffer += chunk.toString('utf8')
-      const parts = buffer.split(/\r?\n/)
-      buffer = parts.pop()
+      buffers[stream] += chunk.toString('utf8')
+      const parts = buffers[stream].split(/\r?\n/)
+      buffers[stream] = parts.pop()
       for (const part of parts) {
         const clean = stripAnsi(part).replace(/\r/g, '').trimEnd()
         if (!clean.trim()) continue
@@ -123,46 +166,34 @@ function runProcess(command, args, options = {}) {
       finish(-1)
     })
     child.on('close', (code) => {
-      if (buffer.trim()) {
-        const clean = stripAnsi(buffer).replace(/\r/g, '').trimEnd()
+      for (const stream of ['stdout', 'stderr']) {
+        const rest = buffers[stream]
+        if (!rest.trim()) continue
+        const clean = stripAnsi(rest).replace(/\r/g, '').trimEnd()
         lines.push(clean)
-        if (onLog) onLog('stdout', clean)
+        if (onLog) onLog(stream, clean)
       }
       finish(code == null ? -1 : code)
     })
   })
 }
 
-export function runCli(cliPath, args, options = {}) {
-  const { cwd, proxy, onLog, timeoutMs = 300000 } = options
+export async function runCli(cliPath, args, options = {}) {
+  const { cwd, onLog, timeoutMs = 300000 } = options
   const node = resolveNode()
+  const proxyUrl = await systemProxyUrl()
   return runProcess(node.cmd, [cliPath, ...args], {
     cwd: cwd || homedir(),
-    env: { ...buildEnv(proxy), ...node.extraEnv },
+    env: { ...buildEnv(proxyUrl), ...node.extraEnv },
     onLog,
     timeoutMs
   })
 }
 
-export function installSkillsPackage(onLog) {
-  const npmArgs = ['install', '-g', 'skills@latest', '--registry=https://registry.npmmirror.com']
-  const isWindows = process.platform === 'win32'
-  const command = isWindows ? process.env.ComSpec || 'cmd.exe' : 'npm'
-  const args = isWindows ? ['/c', 'npm', ...npmArgs] : npmArgs
-  return runProcess(command, args, { env: buildEnv(''), onLog, timeoutMs: 300000 })
-}
-
-export function testGitAccess(proxy) {
-  const env = { ...process.env, GIT_TERMINAL_PROMPT: '0' }
-  const proxyUrl = normalizeProxy(proxy)
-  if (proxyUrl) {
-    env.HTTP_PROXY = proxyUrl
-    env.HTTPS_PROXY = proxyUrl
-    env.http_proxy = proxyUrl
-    env.https_proxy = proxyUrl
-  }
+export async function testGitAccess() {
+  const proxyUrl = await systemProxyUrl()
   const result = spawnSync('git', ['ls-remote', '--heads', 'https://github.com/vercel-labs/agent-skills'], {
-    env,
+    env: buildEnv(proxyUrl),
     encoding: 'utf8',
     timeout: 25000
   })

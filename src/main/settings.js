@@ -3,8 +3,6 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 const DEFAULTS = {
-  proxy: '',
-  cliPath: '',
   defaultAgents: [],
   theme: 'light',
   recentProjects: []
