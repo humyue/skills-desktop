@@ -43,6 +43,18 @@ button {
   background: var(--surface-muted);
 }
 
+.update-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacer-12);
+  padding: var(--spacer-8) var(--spacer-20);
+  background: var(--brand-soft);
+  color: var(--brand-text);
+  border-bottom: 1px solid var(--border);
+  font: var(--weight-medium) var(--text-body) var(--font-sans);
+}
+
 .brand {
   font: var(--weight-strong) var(--text-title) var(--font-sans);
   letter-spacing: 0;

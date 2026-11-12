@@ -1,6 +1,6 @@
 {
   "name": "skills-desktop",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Visual desktop client for the skills CLI",
   "author": "humingyue",
@@ -24,6 +24,7 @@
       "target": [
         "nsis"
       ],
+      "icon": "build/icon.ico",
       "artifactName": "${productName}-${version}-setup.${ext}"
     },
     "nsis": {

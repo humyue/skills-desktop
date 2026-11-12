@@ -11,11 +11,13 @@ const api = {
   testNetwork: () => ipcRenderer.invoke('net:test'),
   checkCliUpdate: () => ipcRenderer.invoke('cli:checkUpdate'),
   cliInfo: () => ipcRenderer.invoke('cli:info'),
+  checkAppUpdate: () => ipcRenderer.invoke('app:checkUpdate'),
   listAgents: () => ipcRenderer.invoke('agents:list'),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   saveSettings: (patch) => ipcRenderer.invoke('settings:set', patch),
   pickDirectory: (payload) => ipcRenderer.invoke('dialog:pickDir', payload),
   openPath: (path) => ipcRenderer.invoke('shell:openPath', { path }),
+  openExternal: (url) => ipcRenderer.invoke('shell:openExternal', { url }),
   onJobLog: (callback) => {
     const handler = (_event, payload) => callback(payload)
     ipcRenderer.on('job:log', handler)

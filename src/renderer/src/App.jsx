@@ -22,9 +22,19 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [updateInfo, setUpdateInfo] = useState(null)
 
   useEffect(() => {
     window.api.getSettings().then(setSettings).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    window.api
+      .checkAppUpdate()
+      .then((info) => {
+        if (info && info.hasUpdate) setUpdateInfo(info)
+      })
+      .catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -150,6 +160,23 @@ export default function App() {
           </button>
         </div>
       </header>
+
+      {updateInfo && (
+        <div className="update-bar">
+          <span>
+            发现新版本 v{updateInfo.latest}
+            {updateInfo.current ? `（当前 v${updateInfo.current}）` : ''}
+          </span>
+          <div className="inline">
+            <button className="btn primary" onClick={() => window.api.openExternal(updateInfo.url)}>
+              前往下载
+            </button>
+            <button className="btn ghost" onClick={() => setUpdateInfo(null)}>
+              忽略
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="shell">
         <nav className="side">

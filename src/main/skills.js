@@ -25,7 +25,6 @@ function parseRepoList(raw) {
   const start = lines.findIndex((line) => line.includes('Available Skills'))
   if (start === -1) return { skills: [] }
   const skills = []
-  let group = 'General'
   let current = null
 
   for (let i = start + 1; i < lines.length; i += 1) {
@@ -34,23 +33,18 @@ function parseRepoList(raw) {
     if (line.includes('Use --skill')) break
     if (line.includes('Discover more skills')) break
 
-    if (line.startsWith('│')) {
-      const body = line.slice(1)
-      const indent = body.length - body.trimStart().length
-      const content = body.trim()
-      if (!content) continue
-      if (indent >= 5) {
-        if (current && !current.description) current.description = content
-      } else {
-        current = { name: content, description: '', group }
-        skills.push(current)
-      }
-      continue
+    // 不依赖框线字符与缩进：按 2 个以上空白切分后取最后一段，兼容不同终端编码
+    const parts = line.split(/\s{2,}/).filter(Boolean)
+    const content = (parts.length > 1 ? parts[parts.length - 1] : line).trim()
+    if (!content) continue
+    if (!/[\p{L}\p{N}]/u.test(content)) continue // 纯框线/分隔行
+    const isName = /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(content)
+    if (isName) {
+      current = { name: content, description: '', group: 'General' }
+      skills.push(current)
+    } else if (current && !current.description) {
+      current.description = content
     }
-
-    const trimmed = line.trim()
-    if (/^[◇◆●○└┌├╭╰✓✗]/.test(trimmed)) continue
-    if (!/^\s/.test(line) && trimmed) group = trimmed
   }
 
   return { skills }
@@ -66,8 +60,8 @@ function buildInstallArgs({ source, skills, agents, global, copy = true }) {
   return args
 }
 
-export async function previewRepo({ source, cliPath }) {
-  const { code, output } = await runCli(cliPath, ['add', source, '-l'], { cwd: homedir() })
+export async function previewRepo({ source, cliPath, onLog }) {
+  const { code, output } = await runCli(cliPath, ['add', source, '-l'], { cwd: homedir(), onLog })
   const parsed = parseRepoList(output)
   if (parsed.skills.length === 0) {
     if (code !== 0) throw new Error(cliErrorSummary(output, code))

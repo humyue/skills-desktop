@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { getSettings, saveSettings } from './settings.js'
 import { listAgents } from './agents.js'
 import { getCliInfo, resolveCliPath, testGitAccess } from './cli.js'
-import { checkCliUpdate } from './versions.js'
+import { checkAppUpdate, checkCliUpdate } from './versions.js'
 import { installSkills, listSkills, previewRepo, readSkill, removeSkills, updateSkills } from './skills.js'
 import { checkHttpReachable, searchSkills } from './search.js'
 
@@ -88,10 +88,11 @@ function registerIpc() {
     return readSkill(payload.path)
   })
 
-  ipcMain.handle('skills:previewRepo', async (_event, payload = {}) => {
+  ipcMain.handle('skills:previewRepo', async (event, payload = {}) => {
     return previewRepo({
       source: payload.source,
-      cliPath: requireCliPath()
+      cliPath: requireCliPath(),
+      onLog: logEmitter(event)
     })
   })
 
@@ -123,6 +124,8 @@ function registerIpc() {
 
   ipcMain.handle('cli:info', () => getCliInfo())
 
+  ipcMain.handle('app:checkUpdate', () => checkAppUpdate(app.getVersion()))
+
   ipcMain.handle('search:skills', (_event, payload = {}) => searchSkills(payload))
 
   ipcMain.handle('net:test', async () => {
@@ -144,6 +147,12 @@ function registerIpc() {
   ipcMain.handle('shell:openPath', async (_event, payload = {}) => {
     if (!payload.path) return ''
     return shell.openPath(payload.path)
+  })
+
+  ipcMain.handle('shell:openExternal', async (_event, payload = {}) => {
+    if (!payload.url) return false
+    await shell.openExternal(String(payload.url))
+    return true
   })
 }
 
