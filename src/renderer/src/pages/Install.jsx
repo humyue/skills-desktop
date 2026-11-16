@@ -12,7 +12,16 @@ function cleanErrorMessage(message) {
   return String(message || '').replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/, '')
 }
 
-export default function Install({ scope, onScopeChange, projectPath, onPickProject, runJob, busy, onDone }) {
+export default function Install({
+  isGlobal,
+  scopeLabel,
+  scopePath,
+  workspaceAgents,
+  workspacePath,
+  runJob,
+  busy,
+  onDone
+}) {
   const [tab, setTab] = useState('repo')
   const [source, setSource] = useState('')
   const [preview, setPreview] = useState(null)
@@ -32,16 +41,35 @@ export default function Install({ scope, onScopeChange, projectPath, onPickProje
     Promise.all([window.api.listAgents(), window.api.getSettings()]).then(([list, settings]) => {
       if (!alive) return
       setAgents(list)
+      // 项目作用域优先勾选该工作区里已有目录的 Agent（同一目录只算一个）
+      const uniqueByDir = (items, keyOf) => {
+        const seen = new Set()
+        const result = []
+        for (const item of items) {
+          const key = keyOf(item)
+          if (seen.has(key)) continue
+          seen.add(key)
+          result.push(item)
+        }
+        return result
+      }
+      const projectAgents = uniqueByDir(
+        list.filter((agent) => workspaceAgents.includes(agent.displayName)),
+        (agent) => agent.projectPath || agent.id
+      )
+      // 全局作用域：默认勾选应用内检测到的所有 Agent
       const preferred =
-        settings.defaultAgents && settings.defaultAgents.length > 0
-          ? list.filter((agent) => settings.defaultAgents.includes(agent.id))
-          : list.filter((agent) => agent.detected)
+        projectAgents.length > 0
+          ? projectAgents
+          : settings.defaultAgents && settings.defaultAgents.length > 0
+            ? list.filter((agent) => settings.defaultAgents.includes(agent.id))
+            : list.filter((agent) => agent.detected)
       setSelectedAgents(preferred.map((agent) => agent.id))
     })
     return () => {
       alive = false
     }
-  }, [])
+  }, [workspaceAgents])
 
   const loadPreview = useCallback(async (rawSource, preselect) => {
     const value = String(rawSource || '').trim()
@@ -106,10 +134,10 @@ export default function Install({ scope, onScopeChange, projectPath, onPickProje
           source: source.trim(),
           skills: checked,
           agents: selectedAgents,
-          scope,
-          projectPath
+          scope: isGlobal ? 'global' : 'project',
+          workspacePath
         }),
-      { successMessage: `已安装 ${checked.length} 个技能` }
+      { successMessage: `已安装 ${checked.length} 个技能到${isGlobal ? '全局' : scopeLabel}` }
     )
     if (result && result.code === 0) onDone()
   }
@@ -120,14 +148,17 @@ export default function Install({ scope, onScopeChange, projectPath, onPickProje
   const canInstall = Boolean(preview) && checked.length > 0 && selectedAgents.length > 0 && !busy
   const visibleAgents = showAllAgents
     ? agents
-    : agents.filter((agent) => agent.detected || selectedAgents.includes(agent.id))
+    : agents.filter(
+        (agent) =>
+          agent.detected || selectedAgents.includes(agent.id) || workspaceAgents.includes(agent.displayName)
+      )
 
   return (
     <div className="split">
       <div className="pane bordered">
         <div className="tabs">
           <button className={`tab ${tab === 'repo' ? 'active' : ''}`} onClick={() => setTab('repo')}>
-            仓库 / 本地路径
+            GitHub 仓库
           </button>
           <button className={`tab ${tab === 'search' ? 'active' : ''}`} onClick={() => setTab('search')}>
             搜索 skills.sh
@@ -153,24 +184,12 @@ export default function Install({ scope, onScopeChange, projectPath, onPickProje
             <div className="pane-head">
               <input
                 className="input"
-                placeholder="owner/repo、GitHub URL 或本地绝对路径"
+                placeholder="owner/repo 或 GitHub 地址"
                 value={source}
                 onChange={(event) => setSource(event.target.value)}
               />
               <button className="btn" disabled={previewLoading || !source.trim()} onClick={() => loadPreview(source)}>
                 {previewLoading ? '预览中…' : '预览技能'}
-              </button>
-              <button
-                className="btn ghost"
-                onClick={async () => {
-                  const dir = await window.api.pickDirectory({ title: '选择本地技能目录' })
-                  if (dir) {
-                    setSource(dir)
-                    loadPreview(dir)
-                  }
-                }}
-              >
-                选本地目录
               </button>
             </div>
 
@@ -261,6 +280,7 @@ export default function Install({ scope, onScopeChange, projectPath, onPickProje
                 className={`chip ${selectedAgents.includes(agent.id) ? 'on' : agent.detected ? '' : 'off'}`}
                 onClick={() => toggleAgent(agent.id)}
               >
+                {selectedAgents.includes(agent.id) ? '✓ ' : ''}
                 {agent.displayName}
                 {agent.detected ? '' : ' · 未检测到'}
               </button>
@@ -269,29 +289,19 @@ export default function Install({ scope, onScopeChange, projectPath, onPickProje
               {showAllAgents ? '收起' : `全部 ${agents.length} 个`}
             </button>
           </div>
-          <span className="hint">默认勾选本机已检测到的 Agent</span>
+          <span className="hint">
+            {workspaceAgents.length > 0
+              ? '默认勾选该工作区里已有目录的 Agent'
+              : '默认勾选本机已检测到的 Agent'}
+          </span>
         </div>
 
         <div className="summary-block">
-          <span className="label">作用域</span>
-          <div className="segmented">
-            <button className={scope === 'global' ? 'active' : ''} onClick={() => onScopeChange('global')}>
-              全局
-            </button>
-            <button className={scope === 'project' ? 'active' : ''} onClick={() => onScopeChange('project')}>
-              项目
-            </button>
-          </div>
-          {scope === 'project' && (
-            <div className="inline">
-              <span className="hint" style={{ wordBreak: 'break-all' }}>
-                {projectPath || '未选择项目目录'}
-              </span>
-              <button className="btn ghost" onClick={onPickProject}>
-                选择目录
-              </button>
-            </div>
-          )}
+          <span className="label">目标作用域</span>
+          <span className="mono">{isGlobal ? '全局' : scopeLabel}</span>
+          <span className="hint" style={{ wordBreak: 'break-all' }}>
+            {scopePath}
+          </span>
         </div>
 
         <div className="summary-block">
@@ -300,7 +310,15 @@ export default function Install({ scope, onScopeChange, projectPath, onPickProje
         </div>
 
         <div className="actions">
-          <button className="btn" onClick={() => { setPreview(null); setChecked([]); setPreviewError('') }} disabled={busy}>
+          <button
+            className="btn"
+            onClick={() => {
+              setPreview(null)
+              setChecked([])
+              setPreviewError('')
+            }}
+            disabled={busy}
+          >
             清空
           </button>
           <button className="btn primary" onClick={install} disabled={!canInstall}>

@@ -1,11 +1,12 @@
 import { app, BrowserWindow, dialog, ipcMain, screen, shell } from 'electron'
 import { join } from 'node:path'
 import { getSettings, saveSettings } from './settings.js'
-import { listAgents } from './agents.js'
+import { detectProjectAgents, listAgentDirs, listAgents } from './agents.js'
 import { getCliInfo, resolveCliPath, testGitAccess } from './cli.js'
 import { checkAppUpdate, checkCliUpdate } from './versions.js'
 import { installSkills, listSkills, previewRepo, readSkill, removeSkills, updateSkills } from './skills.js'
 import { checkHttpReachable, searchSkills } from './search.js'
+import { addWorkspace, listWorkspaces, removeWorkspace, touchWorkspace } from './workspaces.js'
 
 let mainWindow = null
 const allowedPaths = new Set()
@@ -66,16 +67,23 @@ function registerIpc() {
   ipcMain.handle('settings:get', () => getSettings())
   ipcMain.handle('settings:set', (_event, patch) => saveSettings(patch || {}))
   ipcMain.handle('agents:list', () => listAgents())
+  ipcMain.handle('agents:dirs', () => listAgentDirs())
+  ipcMain.handle('agents:detectProject', (_event, payload = {}) => detectProjectAgents(payload.path))
+
+  ipcMain.handle('workspaces:list', () => listWorkspaces())
+  ipcMain.handle('workspaces:add', (_event, payload = {}) => addWorkspace(payload.path))
+  ipcMain.handle('workspaces:remove', (_event, payload = {}) => removeWorkspace(payload.id))
+  ipcMain.handle('workspaces:touch', (_event, payload = {}) => touchWorkspace(payload.id))
 
   ipcMain.handle('skills:list', async (_event, payload = {}) => {
-    const rows = await listSkills({
+    const result = await listSkills({
       scope: payload.scope || 'global',
-      projectPath: payload.projectPath,
+      workspacePath: payload.workspacePath,
       cliPath: requireCliPath()
     })
-    allowedPaths.clear()
-    for (const row of rows) if (row && row.path) allowedPaths.add(row.path)
-    return rows
+    // 允许后续读取这些技能目录，按作用域累积，避免切换作用域后详情报“未授权”
+    for (const row of result.rows) if (row && row.path) allowedPaths.add(row.path)
+    return result
   })
 
   ipcMain.handle('skills:detail', (_event, payload = {}) => {

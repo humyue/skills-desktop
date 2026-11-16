@@ -1,14 +1,14 @@
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 const TABLE = [
   ['aider-desk', 'AiderDesk', '.aider-desk/skills/', '~/.aider-desk/skills/'],
   ['amp', 'Amp', '.agents/skills/', '~/.config/agents/skills/'],
   ['replit', 'Replit', '.agents/skills/', '~/.config/agents/skills/'],
   ['universal', 'Universal', '.agents/skills/', '~/.config/agents/skills/'],
-  ['antigravity', 'Antigravity', '.agents/skills/', '~/.gemini/antigravity/skills/'],
-  ['antigravity-cli', 'Antigravity CLI', '.agents/skills/', '~/.gemini/antigravity-cli/skills/'],
+  ['antigravity', 'Antigravity', '.agents/skills/', '~/.gemini/config/skills/'],
+  ['antigravity-cli', 'Antigravity CLI', '.agents/skills/', '~/.gemini/config/skills/'],
   ['astrbot', 'AstrBot', 'data/skills/', '~/.astrbot/data/skills/'],
   ['autohand-code', 'Autohand Code CLI', '.autohand/skills/', '~/.autohand/skills/'],
   ['augment', 'Augment', '.augment/skills/', '~/.augment/skills/'],
@@ -25,7 +25,7 @@ const TABLE = [
   ['codebuddy', 'CodeBuddy', '.codebuddy/skills/', '~/.codebuddy/skills/'],
   ['codemaker', 'Codemaker', '.codemaker/skills/', '~/.codemaker/skills/'],
   ['codestudio', 'Code Studio', '.codestudio/skills/', '~/.codestudio/skills/'],
-  ['codex', 'Codex', '.agents/skills/', '~/.codex/skills/'],
+  ['codex', 'Codex', '.agents/skills/', '~/.agents/skills/'],
   ['command-code', 'Command Code', '.commandcode/skills/', '~/.commandcode/skills/'],
   ['continue', 'Continue', '.continue/skills/', '~/.continue/skills/'],
   ['cortex', 'Cortex Code', '.cortex/skills/', '~/.snowflake/cortex/skills/'],
@@ -33,9 +33,10 @@ const TABLE = [
   ['cursor', 'Cursor', '.agents/skills/', '~/.cursor/skills/'],
   ['deepagents', 'Deep Agents', '.agents/skills/', '~/.deepagents/agent/skills/'],
   ['devin', 'Devin for Terminal', '.devin/skills/', '~/.config/devin/skills/'],
-  ['droid', 'Droid', '.factory/skills/', '~/.factory/skills/'],
+  ['droid', 'Droid', '.agents/skills/', '~/.factory/skills/'],
   ['eve', 'Eve', 'agent/skills/', ''],
   ['firebender', 'Firebender', '.agents/skills/', '~/.firebender/skills/'],
+  ['fx', 'fx', '.agents/skills/', '~/.agents/skills/'],
   ['forgecode', 'ForgeCode', '.forge/skills/', '~/.forge/skills/'],
   ['gemini-cli', 'Gemini CLI', '.agents/skills/', '~/.gemini/skills/'],
   ['github-copilot', 'GitHub Copilot', '.agents/skills/', '~/.copilot/skills/'],
@@ -46,7 +47,7 @@ const TABLE = [
   ['jazz', 'Jazz', '.jazz/skills/', '~/.jazz/skills/'],
   ['junie', 'Junie', '.junie/skills/', '~/.junie/skills/'],
   ['iflow-cli', 'iFlow CLI', '.iflow/skills/', '~/.iflow/skills/'],
-  ['kilo', 'Kilo Code', '.kilocode/skills/', '~/.kilocode/skills/'],
+  ['kilo', 'Kilo Code', '.agents/skills/', '~/.kilo/skills/'],
   ['kimchi', 'Kimchi', '.kimchi/skills/', '~/.config/kimchi/harness/skills/'],
   ['kiro-cli', 'Kiro CLI', '.kiro/skills/', '~/.kiro/skills/'],
   ['kode', 'Kode', '.kode/skills/', '~/.kode/skills/'],
@@ -67,6 +68,7 @@ const TABLE = [
   ['reasonix', 'Reasonix', '.reasonix/skills/', '~/.reasonix/skills/'],
   ['rovodev', 'Rovo Dev', '.rovodev/skills/', '~/.rovodev/skills/'],
   ['roo', 'Roo Code', '.roo/skills/', '~/.roo/skills/'],
+  ['sarvam-code', 'Sarvam Code', '.agents/skills/', '~/.agents/skills/'],
   ['tabnine-cli', 'Tabnine CLI', '.tabnine/agent/skills/', '~/.tabnine/agent/skills/'],
   ['terramind', 'Terramind', '.terramind/skills/', '~/.terramind/skills/'],
   ['tinycloud', 'Tinycloud', '.tinycloud/skills/', '~/.tinycloud/skills/'],
@@ -88,23 +90,68 @@ function expandHome(value) {
   return value
 }
 
-// Pi 1.8.0+ 把技能目录迁到通用 ~/.agents/skills，但安装检测仍以 ~/.pi/agent 是否存在为准
-const DETECT_OVERRIDES = {
-  pi: '~/.pi/agent'
+// 判断“用户装没装这个 Agent”看它自己的用户目录，而不是它读技能的那个目录。
+// 共享技能池（~/.agents/skills、~/.config/agents/skills）无法区分具体是哪个 Agent，
+// 有独立用户目录的在这里登记；其余取技能目录的上一级（~/.claude/skills → ~/.claude）。
+const DETECT_DIRS = {
+  pi: '~/.pi',
+  codex: '~/.codex',
+  cline: '~/.cline',
+  dexto: '~/.dexto',
+  'kimi-code-cli': '~/.kimi',
+  loaf: '~/.loaf',
+  warp: '~/.warp',
+  zed: '~/.zed',
+  fx: '~/.fx',
+  'sarvam-code': '~/.sarvam',
+  amp: '~/.amp',
+  replit: '~/.replit'
+}
+
+const SHARED_SKILL_DIRS = ['~/.agents/skills', '~/.config/agents/skills']
+
+function trimSlash(value) {
+  return String(value || '').replace(/\/+$/, '')
+}
+
+export function agentDetectDir(id, globalPath) {
+  if (DETECT_DIRS[id]) return expandHome(DETECT_DIRS[id])
+  const normalized = trimSlash(globalPath)
+  if (!normalized || SHARED_SKILL_DIRS.includes(normalized)) return ''
+  return dirname(expandHome(normalized))
 }
 
 export function listAgents() {
   return TABLE.map(([id, displayName, projectPath, globalPath]) => {
-    const detectDir = expandHome(DETECT_OVERRIDES[id] || globalPath)
+    const detectDir = agentDetectDir(id, globalPath)
     return {
       id,
       displayName,
       projectPath,
       globalPath,
+      detectPath: detectDir,
       detected: Boolean(detectDir) && existsSync(detectDir)
     }
   }).sort((a, b) => {
     if (a.detected !== b.detected) return a.detected ? -1 : 1
     return a.displayName.localeCompare(b.displayName)
   })
+}
+
+// 每个 Agent 的全局目录与项目内相对目录，用于拼出某个技能的真实落盘路径
+export function listAgentDirs() {
+  return TABLE.map(([id, displayName, projectPath, globalPath]) => ({
+    id,
+    displayName,
+    projectDir: String(projectPath || '').replace(/\//g, '\\').replace(/\\+$/, ''),
+    globalDir: expandHome(globalPath || '').replace(/[\\/]+$/, '')
+  }))
+}
+
+// 某个项目里实际存在的 Agent 目录（.trae/skills、.claude/skills 等）
+export function detectProjectAgents(projectPath) {
+  if (!projectPath) return []
+  return listAgentDirs()
+    .filter((agent) => agent.projectDir && existsSync(join(projectPath, agent.projectDir)))
+    .map((agent) => agent.displayName)
 }

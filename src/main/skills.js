@@ -4,20 +4,35 @@ import { homedir } from 'node:os'
 import { parse as parseYaml } from 'yaml'
 import { runCli, stripAnsi } from './cli.js'
 
-export async function listSkills({ scope = 'global', projectPath, cliPath }) {
+// CLI 会在 JSON 前面打印告警，例如 [SKILLS_SKILL_SKIPPED]，里面也有 "["。
+// 逐个 "[" 起点尝试解析到最后一个 "]" 结束，避免从告警的括号处开始截取。
+function parseJsonArray(output) {
+  const text = stripAnsi(output).replace(/\r/g, '')
+  const end = text.lastIndexOf(']')
+  if (end === -1) return []
+  for (let i = 0; i < end; i += 1) {
+    if (text[i] !== '[') continue
+    try {
+      return JSON.parse(text.slice(i, end + 1))
+    } catch {
+      /* 试下一个 "[" */
+    }
+  }
+  return []
+}
+
+export async function listSkills({ scope = 'global', workspacePath, cliPath }) {
+  const global = scope === 'global'
+  if (!global && !workspacePath) throw new Error('请先选择工作区')
+  if (!global && !existsSync(workspacePath)) throw new Error('工作区目录不存在')
+  const cwd = global ? homedir() : workspacePath
   const args = ['ls', '--json']
-  const cwd = scope === 'global' ? homedir() : projectPath
-  if (scope === 'global') args.push('-g')
-  if (scope === 'project' && !cwd) throw new Error('请先选择项目目录')
+  if (global) args.push('-g')
   const { code, output } = await runCli(cliPath, args, { cwd })
   if (code !== 0) throw new Error(output || 'skills ls 执行失败')
-  const start = output.indexOf('[')
-  if (start === -1) return []
-  try {
-    return JSON.parse(output.slice(start))
-  } catch {
-    return []
-  }
+  const rows = parseJsonArray(output)
+  const skipped = (stripAnsi(output).match(/\[SKILLS_SKILL_SKIPPED\]/g) || []).length
+  return { rows, skipped }
 }
 
 function parseRepoList(raw) {
@@ -100,39 +115,41 @@ function cliErrorSummary(output, code) {
 }
 
 export async function installSkills(options) {
-  const { source, skills, agents, scope, projectPath, cliPath, onLog } = options
+  const { source, skills, agents, scope = 'global', workspacePath, cliPath, onLog } = options
   if (!source) throw new Error('请填写技能来源')
   if (!skills || skills.length === 0) throw new Error('请至少选择一个技能')
   if (!agents || agents.length === 0) throw new Error('请至少选择一个 Agent')
   const global = scope === 'global'
-  const cwd = global ? homedir() : projectPath
-  if (!global && !cwd) throw new Error('请先选择项目目录')
+  const cwd = global ? homedir() : workspacePath
+  if (!global && !cwd) throw new Error('请先选择工作区')
+  if (!global && !existsSync(cwd)) throw new Error('工作区目录不存在')
   const args = buildInstallArgs({ source, skills, agents, global })
   return runCli(cliPath, args, { cwd, onLog, timeoutMs: 600000 })
 }
 
 export async function removeSkills(options) {
-  const { names, agents, scope, projectPath, cliPath, onLog } = options
+  const { names, agents, scope = 'global', workspacePath, cliPath, onLog } = options
   if (!names || names.length === 0) throw new Error('请选择要卸载的技能')
   const args = ['remove', ...names]
   for (const agent of agents || []) args.push('--agent', agent)
   const global = scope === 'global'
   if (global) args.push('-g')
+  else if (!workspacePath) throw new Error('请先选择工作区')
   args.push('-y')
   return runCli(cliPath, args, {
-    cwd: global ? homedir() : projectPath,
+    cwd: global ? homedir() : workspacePath,
     onLog
   })
 }
 
 export async function updateSkills(options) {
-  const { names, scope, projectPath, cliPath, onLog } = options
+  const { names, scope = 'global', workspacePath, cliPath, onLog } = options
   const args = ['update']
   for (const name of names || []) args.push(name)
   args.push(scope === 'global' ? '-g' : '-p')
   args.push('-y')
   return runCli(cliPath, args, {
-    cwd: scope === 'global' ? homedir() : projectPath,
+    cwd: scope === 'global' ? homedir() : workspacePath,
     onLog,
     timeoutMs: 600000
   })
