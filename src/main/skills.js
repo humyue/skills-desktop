@@ -1,7 +1,8 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { parse as parseYaml } from 'yaml'
+import { listAgentDirs } from './agents.js'
 import { runCli, stripAnsi } from './cli.js'
 
 // CLI 会在 JSON 前面打印告警，例如 [SKILLS_SKILL_SKIPPED]，里面也有 "["。
@@ -127,6 +128,11 @@ export async function installSkills(options) {
   return runCli(cliPath, args, { cwd, onLog, timeoutMs: 600000 })
 }
 
+function agentSkillDir(agent, global, workspacePath, name) {
+  const base = global ? agent.globalDir : agent.projectDir ? join(workspacePath, agent.projectDir) : ''
+  return base ? join(base, name) : ''
+}
+
 export async function removeSkills(options) {
   const { names, agents, scope = 'global', workspacePath, cliPath, onLog } = options
   if (!names || names.length === 0) throw new Error('请选择要卸载的技能')
@@ -136,10 +142,30 @@ export async function removeSkills(options) {
   if (global) args.push('-g')
   else if (!workspacePath) throw new Error('请先选择工作区')
   args.push('-y')
-  return runCli(cliPath, args, {
+  const result = await runCli(cliPath, args, {
     cwd: global ? homedir() : workspacePath,
     onLog
   })
+  if (result.code !== 0) return result
+
+  // CLI 只在「最后一个使用者也被移除」时才删除规范化目录（如 .agents/skills）。
+  // 同一技能同时装在 .claude/skills 和 .agents/skills 时，按 Agent 卸载共用目录里的那一份
+  // 会被跳过：命令返回成功，目录却还在。这里按目标 Agent 的真实目录兜底删除。
+  const targets = listAgentDirs().filter((agent) => (agents || []).includes(agent.id))
+  const removed = []
+  for (const name of names) {
+    for (const agent of targets) {
+      const dir = agentSkillDir(agent, global, workspacePath, name)
+      if (!dir || !existsSync(join(dir, 'SKILL.md'))) continue
+      try {
+        rmSync(dir, { recursive: true, force: true })
+        removed.push(dir)
+      } catch {
+        /* 兜底删除失败时保留 CLI 的结果 */
+      }
+    }
+  }
+  return { ...result, removed }
 }
 
 export async function updateSkills(options) {

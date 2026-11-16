@@ -554,7 +554,10 @@ button:disabled { cursor: not-allowed; }
 .dossier dd.path { font: 11px/16px var(--font-mono); }
 
 .agent-line { font-size: 12px; margin-bottom: 4px; }
-.agent-line b { display: block; font-weight: var(--weight-strong); line-height: 17px; }
+.agent-line .agent-head { display: flex; align-items: baseline; gap: 6px; }
+.agent-line .agent-head b { font-weight: var(--weight-strong); line-height: 17px; }
+.agent-line .agent-head .hint { font-size: 10px; }
+.agent-line.on .agent-head b { color: var(--brand-text); }
 .agent-line .p { display: block; font: 11px/16px var(--font-mono); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .dossier .note { font-size: 11px; line-height: 17px; color: var(--text-muted); border-top: 1px solid var(--border-soft); padding-top: 10px; }

@@ -82,7 +82,24 @@ function registerIpc() {
       cliPath: requireCliPath()
     })
     // 允许后续读取这些技能目录，按作用域累积，避免切换作用域后详情报“未授权”
-    for (const row of result.rows) if (row && row.path) allowedPaths.add(row.path)
+    const agentDirs = listAgentDirs()
+    for (const row of result.rows) {
+      if (!row) continue
+      if (row.path) allowedPaths.add(row.path)
+      // 同一技能装在多个 Agent 下时，各 Agent 的目录也要允许预览
+      for (const name of row.agents || []) {
+        const agent = agentDirs.find((item) => item.displayName === name)
+        if (!agent) continue
+        const base =
+          payload.scope === 'project'
+            ? agent.projectDir
+              ? join(payload.workspacePath, agent.projectDir)
+              : ''
+            : agent.globalDir
+        if (!base || !row.name) continue
+        allowedPaths.add(join(base, row.name))
+      }
+    }
     return result
   })
 

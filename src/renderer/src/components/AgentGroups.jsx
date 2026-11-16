@@ -70,7 +70,7 @@ export default function AgentGroups({
                   className="un"
                   onClick={(event) => {
                     event.stopPropagation()
-                    onUninstall(skill)
+                    onUninstall(skill, group.agent)
                   }}
                 >
                   卸载

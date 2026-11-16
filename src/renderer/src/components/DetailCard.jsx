@@ -8,6 +8,7 @@ export function skillAgentPath(skill, agentName, scope, workspace, agentDirs) {
 
 export default function DetailCard({
   skill,
+  agent,
   scope,
   workspace,
   agentDirs,
@@ -56,6 +57,11 @@ export default function DetailCard({
 
   const missing = !skill.path
   const agents = skill.agents || []
+  // 每个 Agent 下的实际目录，用于展示与按 Agent 预览
+  const agentRows = agents.map((name) => ({
+    name,
+    path: skillAgentPath(skill, name, scope, workspace, agentDirs)
+  }))
 
   return (
     <aside className="card-col">
@@ -69,10 +75,13 @@ export default function DetailCard({
         <dl>
           <dt>装入</dt>
           <dd>
-            {agents.map((agent) => (
-              <div key={agent} className="agent-line">
-                <b>{agent}</b>
-                <span className="p">{skillAgentPath(skill, agent, scope, workspace, agentDirs)}</span>
+            {agentRows.map((row) => (
+              <div key={row.name} className={`agent-line ${agent === row.name ? 'on' : ''}`}>
+                <div className="agent-head">
+                  <b>{row.name}</b>
+                  {agent === row.name && <span className="hint">当前</span>}
+                </div>
+                <span className="p">{row.path}</span>
               </div>
             ))}
             {agents.length === 0 && <span className="hint">未知 Agent</span>}
@@ -90,7 +99,7 @@ export default function DetailCard({
         </div>
 
         <div className="acts">
-          <button className="btn primary" onClick={() => onPreview(skill)} disabled={missing}>
+          <button className="btn primary" onClick={() => onPreview(skill, agent)} disabled={missing}>
             预览 SKILL.md
           </button>
           <button
@@ -107,7 +116,7 @@ export default function DetailCard({
             打开目录
           </button>
           <button className="btn danger" onClick={() => onUninstall(skill)} disabled={busy || missing}>
-            卸载此技能
+            全部卸载
           </button>
         </div>
       </div>

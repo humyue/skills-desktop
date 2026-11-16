@@ -255,10 +255,56 @@ export default function App() {
     [activeScope, activeWorkspace, agentDirs]
   )
 
+  const requestUninstallAgent = useCallback(
+    (skill, agentName) => {
+      if (!skill || !agentName) return
+      const scope = activeScope === 'global' ? 'global' : 'project'
+      const rows = (skill.agents || []).map((name) => ({
+        name,
+        id: agentDirs.find((item) => item.displayName === name)?.id || '',
+        path: skillAgentPath(skill, name, scope, activeWorkspace, agentDirs)
+      }))
+      const target = rows.find((row) => row.name === agentName)
+      if (!target || !target.id) return
+      const shared = rows.filter((row) => row.path.toLowerCase() === target.path.toLowerCase())
+      const names = shared.map((row) => row.name)
+      setDialog({
+        action: 'uninstallAgent',
+        skill,
+        agent: { name: names.join('、'), ids: shared.map((row) => row.id) },
+        title: `从 ${names.join('、')} 移除 ${skill.name}`,
+        sub: `${activeWorkspace ? `工作区 ${activeWorkspace.name}` : '全局作用域'} · ${
+          shared.length > 1 ? '这些 Agent 共用同一目录' : '只影响这一个 Agent'
+        }`,
+        rows: shared.map((row) => ({ label: row.name, path: row.path })),
+        warning:
+          shared.length > 1
+            ? '这几个 Agent 指向同一个目录，移除会一起生效；其他目录里的同名技能不受影响。'
+            : '只删除这个 Agent 目录下的副本；其他 Agent 里的同名技能不受影响。',
+        confirmText: '移除',
+        danger: true
+      })
+    },
+    [activeScope, activeWorkspace, agentDirs]
+  )
+
   const confirmDialog = useCallback(async () => {
     const current = dialog
     if (!current) return
     setDialog(null)
+    if (current.action === 'uninstallAgent') {
+      await runJob(
+        () =>
+          window.api.removeSkills({
+            names: [current.skill.name],
+            agents: current.agent.ids,
+            scope: activeWorkspace ? 'project' : 'global',
+            workspacePath: activeWorkspace?.path
+          }),
+        { successMessage: `已从 ${current.agent.name} 移除 ${current.skill.name}` }
+      )
+      return
+    }
     if (current.action === 'uninstall') {
       await runJob(
         () =>
@@ -303,16 +349,27 @@ export default function App() {
     [activeWorkspace, runJob]
   )
 
-  const openPreview = useCallback(async (skill) => {
-    if (!skill || !skill.path) return
-    setPreview({ skill, loading: true, data: null, error: '' })
-    try {
-      const data = await window.api.skillDetail({ path: skill.path })
-      setPreview({ skill, loading: false, data, error: '' })
-    } catch (err) {
-      setPreview({ skill, loading: false, data: null, error: cleanErrorMessage(err.message) })
-    }
-  }, [])
+  const openPreview = useCallback(
+    async (skill, agentName) => {
+      if (!skill) return
+      const scope = activeScope === 'global' ? 'global' : 'project'
+      const target = agentName || skill.agents?.[0] || ''
+      const known = target && agentDirs.some((item) => item.displayName === target)
+      const filePath = known
+        ? skillAgentPath(skill, target, scope, activeWorkspace, agentDirs)
+        : skill.path
+      if (!filePath) return
+      const viewSkill = { ...skill, path: filePath }
+      setPreview({ skill: viewSkill, agent: target, loading: true, data: null, error: '' })
+      try {
+        const data = await window.api.skillDetail({ path: filePath })
+        setPreview({ skill: viewSkill, agent: target, loading: false, data, error: '' })
+      } catch (err) {
+        setPreview({ skill: viewSkill, agent: target, loading: false, data: null, error: cleanErrorMessage(err.message) })
+      }
+    },
+    [activeScope, activeWorkspace, agentDirs]
+  )
 
   const toggleAgent = useCallback(
     (agent) => {
@@ -439,7 +496,7 @@ export default function App() {
               onToggleAll={toggleAll}
               selected={{ name: selectedSkill?.name || '', agent: selectedAgent }}
               onSelect={(skill, agent) => setSelected({ name: skill.name, agent })}
-              onUninstall={requestUninstall}
+              onUninstall={requestUninstallAgent}
               onInstall={() => setPage('install')}
               onRefresh={() => loadScope(activeScope)}
               loading={loading === activeScope}
@@ -448,6 +505,7 @@ export default function App() {
             />
             <DetailCard
               skill={selectedSkill}
+              agent={selectedAgent}
               scope={activeScope === 'global' ? 'global' : 'project'}
               workspace={activeWorkspace}
               agentDirs={agentDirs}
