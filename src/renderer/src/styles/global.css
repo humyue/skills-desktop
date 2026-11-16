@@ -31,12 +31,14 @@ button:disabled { cursor: not-allowed; }
 /* ---------- 外壳 ---------- */
 .app {
   display: grid;
-  grid-template-rows: 58px minmax(0, 1fr) auto;
+  /* 第二行留给可选的更新提示条，避免它占掉 shell 的高度 */
+  grid-template-rows: 58px auto minmax(0, 1fr) auto;
   height: 100%;
   min-height: 0;
 }
 
 .titlebar {
+  grid-row: 1;
   display: flex;
   align-items: center;
   gap: var(--spacer-16);
@@ -92,6 +94,7 @@ button:disabled { cursor: not-allowed; }
 }
 
 .update-bar {
+  grid-row: 2;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -104,6 +107,7 @@ button:disabled { cursor: not-allowed; }
 }
 
 .shell {
+  grid-row: 3;
   display: grid;
   grid-template-columns: 248px minmax(0, 1fr) 304px;
   min-height: 0;
@@ -702,7 +706,7 @@ button:disabled { cursor: not-allowed; }
 .segmented button.active { background: var(--text); color: var(--surface-raised); }
 
 /* ---------- 日志条 ---------- */
-.logbar { border-top: 1px solid var(--border); background: var(--surface-muted); }
+.logbar { grid-row: 4; border-top: 1px solid var(--border); background: var(--surface-muted); }
 .logbar-head { display: flex; align-items: center; gap: var(--spacer-8); padding: 7px 16px; }
 .logbar-title { font: var(--weight-medium) 11px/1 var(--font-sans); color: var(--text-muted); letter-spacing: 0.08em; }
 .logbar-line { font: 11px/15px var(--font-mono); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
