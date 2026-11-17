@@ -1,10 +1,15 @@
 # Skills Manager
 
-[skills CLI](https://www.npmjs.com/package/skills) 的桌面端可视化客户端。
+SKill Manager 是一个可视化桌面端Agent技能管理应用。 
 
 技术栈：Electron 38 + electron-vite 2 + React 18 + Vite 5，Markdown 渲染使用 marked + DOMPurify，技能元信息解析使用 yaml。
 
 
+## 下载地址
+
+[https://github.com/humyue/skills-desktop/releases/latest](https://github.com/humyue/skills-desktop/releases/latest)
+
+*当前只构建了windows端安装包，其他平台可以通过clone源码构建。*
 
 ## 运行界面
 
