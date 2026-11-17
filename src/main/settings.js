@@ -32,8 +32,8 @@ function migrate(raw) {
     base.schemaVersion = 2
   }
   if (!Array.isArray(base.workspaces)) base.workspaces = []
-  // 盘符根目录不是项目，历史数据里出现过也一并剔除
-  base.workspaces = base.workspaces.filter((item) => item && item.path && !isDriveRoot(item.path))
+  // 只保留有路径的记录；盘符根目录由用户主动选择时仍然有效，不再无条件剔除
+  base.workspaces = base.workspaces.filter((item) => item && item.path)
   if (typeof base.activeScope !== 'string') base.activeScope = 'global'
   return base
 }

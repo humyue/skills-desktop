@@ -1,9 +1,18 @@
+// 工作区可能是盘符根目录（F:\），直接拼接会得到 F:\\skills，与主进程 join 出来的路径不一致
+function joinPath(base, ...parts) {
+  const head = String(base || '').replace(/[\\/]+$/, '')
+  const tail = parts
+    .map((part) => String(part || '').replace(/^[\\/]+|[\\/]+$/g, ''))
+    .filter(Boolean)
+  return [head, ...tail].join('\\')
+}
+
 export function skillAgentPath(skill, agentName, scope, workspace, agentDirs) {
   const agent = agentDirs.find((item) => item.displayName === agentName)
   if (!agent) return '未知目录'
-  if (scope === 'global') return `${agent.globalDir}\\${skill.name}`
+  if (scope === 'global') return joinPath(agent.globalDir, skill.name)
   if (!workspace) return '未选择工作区'
-  return `${workspace.path}\\${agent.projectDir}\\${skill.name}`
+  return joinPath(workspace.path, agent.projectDir, skill.name)
 }
 
 export default function DetailCard({
